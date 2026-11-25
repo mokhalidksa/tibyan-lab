@@ -68,7 +68,7 @@ def main() -> None:
             series, settings, None, {"id": sample["id"], "name": sample["name"], "source": sample["source"]}
         )
         path = args.out / f"{sample['id']}.json"
-        path.write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
+        path.write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8", newline="\n")
         written.append({"id": sample["id"], "name": sample["name"], "file": path.name})
         base, model = result["overall"]["baseline"], result["overall"]["model"]
         print(
@@ -84,7 +84,9 @@ def main() -> None:
         "generator": {"repo": "tibyan-lab", "version": __version__, "commit": commit()},
         "samples": written,
     }
-    (args.out / "index.json").write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")
+    (args.out / "index.json").write_text(
+        json.dumps(manifest, indent=1) + "\n", encoding="utf-8", newline="\n"
+    )
     print(f"wrote {len(written)} samples and index.json to {args.out}")
 
 
