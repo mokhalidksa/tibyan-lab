@@ -39,6 +39,14 @@ Timing: a 50,000-row hourly file took 0.85 seconds end to end on a development l
 - Each IP address gets 10 checks per 10 minutes (`RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECONDS`). Behind a proxy, set `TRUSTED_PROXY_HOPS` to the number of proxies that append to `X-Forwarded-For` (default 1).
 - CORS allows `https://tibyan.tech`. Add origins for testing with `ALLOWED_ORIGINS` (comma-separated).
 
+## Document extraction (built, switched off)
+
+`POST /extract` takes one invoice (PDF, PNG, JPEG or WebP; at most 5 MB and 3 pages) and returns `tibyan-lab/document-extraction@1`: vendor, invoice number, dates, currency, line items, subtotal, tax and total, each with the page and box or text it came from and a high or low confidence flag. A second step checks that the line amounts add up to the subtotal and flags them when they do not.
+
+- The model sits behind one interface (`src/tibyan_lab/extract/provider.py`). Only a mock provider exists, used by the tests; with no provider configured the endpoint answers `503 unavailable`.
+- Limits: 5 documents per IP address per day, 200 a day in all (`EXTRACT_DAILY_TOTAL`), plus the general rate limit. Refused files do not use the quota.
+- `scripts/evaluate.py` measures field-level accuracy on a labelled set and writes `accuracy.json`. It has not been run: there is no provider or API key yet, so there are no accuracy numbers.
+
 ## Run it
 
 ```

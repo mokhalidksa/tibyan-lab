@@ -44,3 +44,27 @@ def client_ip(forwarded_for: str | None, peer: str | None, trusted_hops: int) ->
         if len(chain) >= trusted_hops:
             return chain[-trusted_hops]
     return peer or "unknown"
+
+
+class DailyLimit:
+    """Counts per client and in total for the current UTC day; resets at midnight UTC."""
+
+    def __init__(self, per_client: int, total: int) -> None:
+        self.per_client = per_client
+        self.total = total
+        self._day = ""
+        self._counts: dict[str, int] = {}
+        self._all = 0
+        self._lock = threading.Lock()
+
+    def check(self, client: str, day: str) -> int | None:
+        """Record one use. None if allowed, else seconds until the limit resets."""
+        with self._lock:
+            if day != self._day:
+                self._day, self._counts, self._all = day, {}, 0
+            if self._all >= self.total or self._counts.get(client, 0) >= self.per_client:
+                now = time.gmtime()
+                return max(1, 86400 - (now.tm_hour * 3600 + now.tm_min * 60 + now.tm_sec))
+            self._counts[client] = self._counts.get(client, 0) + 1
+            self._all += 1
+            return None

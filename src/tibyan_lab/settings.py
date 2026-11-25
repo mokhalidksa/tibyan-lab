@@ -27,6 +27,12 @@ class Settings:
     max_training_rows: int = 10_000
     #: Rolling-origin folds in the backtest.
     folds: int = 3
+    #: Document extraction: pages per document, documents per IP per day, documents per day in all.
+    max_pages: int = 3
+    extract_daily_per_ip: int = 5
+    extract_daily_total: int = 200
+    #: Which model provider reads invoices. Empty keeps /extract switched off.
+    extract_provider: str = ""
 
 
 def _int(name: str, default: int) -> int:
@@ -44,4 +50,6 @@ def load_settings() -> Settings:
         trusted_proxy_hops=_int("TRUSTED_PROXY_HOPS", 1),
         rate_limit_requests=_int("RATE_LIMIT_REQUESTS", 10),
         rate_limit_window_seconds=_int("RATE_LIMIT_WINDOW_SECONDS", 600),
+        extract_daily_total=_int("EXTRACT_DAILY_TOTAL", 200),
+        extract_provider=os.environ.get("EXTRACT_PROVIDER", ""),
     )

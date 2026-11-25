@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -16,18 +17,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from . import __version__, backtest, errors, uploads, validation
-from .ratelimit import RateLimiter, client_ip
+from .extract import pipeline as extraction
+from .extract.provider import Provider
+from .ratelimit import DailyLimit, RateLimiter, client_ip
 from .settings import Settings, load_settings
 
 logger = logging.getLogger("tibyan_lab")
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, provider: Provider | None = None) -> FastAPI:
     settings = settings or load_settings()
     limiter = RateLimiter(settings.rate_limit_requests, settings.rate_limit_window_seconds)
     app = FastAPI(title="tibyan-lab", version=__version__, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.settings = settings
     app.state.limiter = limiter
+    daily = DailyLimit(settings.extract_daily_per_ip, settings.extract_daily_total)
+    # No real provider ships yet; one is chosen from EXTRACT_PROVIDER once it exists.
+    app.state.provider = provider
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.allowed_origins),
@@ -80,6 +86,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return backtest.run(
                 series, settings, horizon, {"id": "upload", "name": upload.filename or "upload"}
             )
+
+        try:
+            return await asyncio.wait_for(asyncio.to_thread(work), timeout=settings.timeout_seconds)
+        except TimeoutError as error:
+            raise errors.timeout(settings.timeout_seconds) from error
+
+    @app.post("/extract")
+    async def extract(request: Request) -> dict[str, Any]:
+        active: Provider | None = app.state.provider
+        if active is None:
+            raise errors.unavailable()
+        peer = request.client.host if request.client else None
+        client = client_ip(request.headers.get("x-forwarded-for"), peer, settings.trusted_proxy_hops)
+        wait = limiter.check(client)
+        if wait is not None:
+            raise errors.rate_limited(wait)
+        body = await uploads.read_body(
+            request.stream(), request.headers.get("content-length"), settings.max_upload_bytes
+        )
+        form = uploads.parse_form(body, request.headers.get("content-type"))
+        upload = form.get("file")
+        if upload is None or not upload.data:
+            raise errors.file_missing()
+        extraction.load_document(upload.data, settings)  # refuse bad files before spending the daily quota
+        wait = daily.check(client, time.strftime("%Y-%m-%d", time.gmtime()))
+        if wait is not None:
+            raise errors.rate_limited(wait)
+
+        def work() -> dict[str, Any]:
+            return extraction.run(upload.data, active, settings, upload.filename or "upload")
 
         try:
             return await asyncio.wait_for(asyncio.to_thread(work), timeout=settings.timeout_seconds)

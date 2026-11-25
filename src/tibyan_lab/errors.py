@@ -72,5 +72,9 @@ def timeout(seconds: float) -> LabError:
     return LabError("timeout", 504, f"The check took longer than {seconds:g} seconds.")
 
 
+def unavailable() -> LabError:
+    return LabError("unavailable", 503, "Document extraction is not switched on yet.")
+
+
 def internal() -> LabError:
     return LabError("internal", 500, "Something went wrong on our side.")
